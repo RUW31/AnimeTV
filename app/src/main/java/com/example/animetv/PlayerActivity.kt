@@ -4,7 +4,10 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.view.KeyEvent
+import android.view.View
 import android.webkit.CookieManager
+import android.widget.TextView
+import android.widget.Toast
 import androidx.annotation.OptIn
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
@@ -18,47 +21,88 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * 1. Carga la página del episodio en el WebView oculto y captura el .m3u8/.mp4.
- * 2. Apaga el WebView (para que el reproductor web no suene por detrás).
- * 3. Reproduce con ExoPlayer reenviando Referer, User-Agent y cookies.
+ * Reproduce la cola de [PlaybackQueue]:
+ *  1. Busca el .m3u8/.mp4 del episodio con el WebView oculto.
+ *  2. Lo reproduce con ExoPlayer reenviando Referer, User-Agent y cookies.
+ *  3. Guarda el progreso cada 5 s y al final pasa solo al siguiente episodio.
  *
  * Control remoto:
- *  - Centro/OK: pausa / reanuda      - Izquierda/Derecha: -10 s / +10 s
+ *  - OK: pausa / reanuda                - ◀ / ▶: -10 s / +10 s
+ *  - Canal +/- o Siguiente/Anterior: cambia de episodio
  *  - Atrás con controles visibles: los oculta; si no, sale
- *  - Teclas multimedia (play/pause, FF, RW): funcionan siempre
  */
 @OptIn(UnstableApi::class)
 class PlayerActivity : ScraperHostActivity(R.layout.activity_player) {
 
     private lateinit var playerView: PlayerView
+    private lateinit var titleBar: View
+    private lateinit var titleText: TextView
+    private lateinit var subtitleText: TextView
     private var player: ExoPlayer? = null
+    private var index = 0
+    private var loadJob: Job? = null
+    private var progressJob: Job? = null
+    private var countdownJob: Job? = null
+
+    private val episodes: List<Episode> get() = PlaybackQueue.episodes
+    private val hasNext: Boolean get() = index + 1 < episodes.size
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         playerView = findViewById(R.id.player_view)
+        titleBar = findViewById(R.id.title_bar)
+        titleText = findViewById(R.id.player_title)
+        subtitleText = findViewById(R.id.player_subtitle)
 
-        val pageUrl = intent.getStringExtra(EXTRA_URL)
-        if (pageUrl == null) {
+        playerView.setShowNextButton(false)
+        playerView.setShowPreviousButton(false)
+        playerView.setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { visibility ->
+            titleBar.visibility = visibility
+        })
+
+        if (episodes.isEmpty()) {
             finish()
             return
         }
+        val start = intent.getIntExtra(EXTRA_INDEX, 0).coerceIn(0, episodes.lastIndex)
+        playEpisode(start, intent.getLongExtra(EXTRA_START_MS, -1L))
+    }
 
-        showStatus(getString(R.string.searching_video))
-        lifecycleScope.launch {
-            val hit = scraper.sniffMedia(pageUrl)
-            scraper.stop()
+    private fun playEpisode(target: Int, startMs: Long) {
+        countdownJob?.cancel()
+        loadJob?.cancel()
+        saveProgress()
+        releasePlayer()
+
+        index = target
+        val ep = episodes[target]
+        val anime = PlaybackQueue.anime
+        titleText.text = anime?.title?.takeIf { it.isNotBlank() } ?: ep.title
+        subtitleText.text = if (ep.number != null) "${ep.label} · ${ep.title}" else ep.title
+        showStatus(getString(R.string.searching_video_ep, ep.label))
+
+        loadJob = lifecycleScope.launch {
+            val hit = scraper.sniffMedia(ep.url)
+            scraper.stop() // corta el reproductor web (y su audio)
             if (hit == null) {
-                showStatus(getString(R.string.video_not_found), spinner = false)
-            } else {
-                startPlayback(hit)
+                showStatus(
+                    getString(if (hasNext) R.string.video_not_found_next else R.string.video_not_found),
+                    spinner = false
+                )
+                return@launch
             }
+            val resume = if (startMs >= 0) startMs
+            else Store.progress(ep.url)?.takeIf { !it.finished }?.positionMs ?: 0L
+            startPlayback(hit, resume)
         }
     }
 
-    private fun startPlayback(hit: MediaHit) {
+    private fun startPlayback(hit: MediaHit, resumeMs: Long) {
         // Reenviamos solo las cabeceras que importan para los CDN de video.
         val headers = HashMap<String, String>()
         hit.headers.forEach { (key, value) ->
@@ -82,20 +126,28 @@ class PlayerActivity : ScraperHostActivity(R.layout.activity_player) {
             .build()
 
         exo.addListener(object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_ENDED) onEpisodeEnded()
+            }
+
             override fun onPlayerError(error: PlaybackException) {
                 showStatus(getString(R.string.playback_error, error.errorCodeName), spinner = false)
             }
         })
 
+        val ep = episodes[index]
         val mediaItem = MediaItem.Builder()
             .setUri(hit.url)
             .setMediaMetadata(
-                MediaMetadata.Builder().setTitle(intent.getStringExtra(EXTRA_TITLE)).build()
+                MediaMetadata.Builder()
+                    .setTitle(PlaybackQueue.anime?.title ?: ep.title)
+                    .setSubtitle(ep.label)
+                    .build()
             )
             .apply { if (hit.isHls) setMimeType(MimeTypes.APPLICATION_M3U8) }
             .build()
 
-        exo.setMediaItem(mediaItem)
+        if (resumeMs > 0) exo.setMediaItem(mediaItem, resumeMs) else exo.setMediaItem(mediaItem)
         exo.prepare()
         exo.playWhenReady = true
 
@@ -104,11 +156,87 @@ class PlayerActivity : ScraperHostActivity(R.layout.activity_player) {
         playerView.isVisible = true
         hideStatus()
         playerView.requestFocus()
+        if (resumeMs > 5_000) {
+            Toast.makeText(this, getString(R.string.resume_from, formatTime(resumeMs)), Toast.LENGTH_SHORT).show()
+        }
+
+        progressJob?.cancel()
+        progressJob = lifecycleScope.launch {
+            while (true) {
+                delay(5_000)
+                saveProgress()
+            }
+        }
+    }
+
+    /** Fin del episodio: cuenta regresiva de 5 s y pasa al siguiente. */
+    private fun onEpisodeEnded() {
+        saveProgress()
+        if (!hasNext) {
+            showStatus(getString(R.string.series_finished), spinner = false)
+            return
+        }
+        val next = episodes[index + 1]
+        countdownJob?.cancel()
+        countdownJob = lifecycleScope.launch {
+            for (s in 5 downTo 1) {
+                showStatus(getString(R.string.next_episode_countdown, next.label, s), spinner = false)
+                delay(1_000)
+            }
+            playEpisode(index + 1, 0L)
+        }
+    }
+
+    private fun saveProgress() {
+        val p = player ?: return
+        val ep = episodes.getOrNull(index) ?: return
+        val duration = p.duration
+        if (duration <= 0) return
+        val anime = PlaybackQueue.anime
+        Store.saveProgress(
+            WatchProgress(
+                episodeUrl = ep.url,
+                episodeTitle = ep.title,
+                episodeNumber = ep.number,
+                animeUrl = anime?.url.orEmpty(),
+                animeTitle = anime?.title?.takeIf { it.isNotBlank() } ?: ep.title,
+                animeImage = anime?.image?.takeIf { it.isNotBlank() } ?: ep.image,
+                positionMs = p.currentPosition.coerceAtLeast(0L),
+                durationMs = duration,
+                updatedAt = System.currentTimeMillis()
+            )
+        )
+    }
+
+    private fun releasePlayer() {
+        progressJob?.cancel()
+        player?.release()
+        player = null
+        playerView.player = null
+        playerView.isVisible = false
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        val p = player ?: return super.dispatchKeyEvent(event)
+        if (event.action == KeyEvent.ACTION_DOWN) {
+            val waitingNext = countdownJob?.isActive == true
+            val failed = player == null && loadJob?.isActive == false
+            when (event.keyCode) {
+                KeyEvent.KEYCODE_MEDIA_NEXT, KeyEvent.KEYCODE_CHANNEL_UP -> if (hasNext) {
+                    playEpisode(index + 1, 0L)
+                    return true
+                }
+                KeyEvent.KEYCODE_MEDIA_PREVIOUS, KeyEvent.KEYCODE_CHANNEL_DOWN -> if (index > 0) {
+                    playEpisode(index - 1, 0L)
+                    return true
+                }
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> if ((waitingNext || failed) && hasNext) {
+                    playEpisode(index + 1, 0L)
+                    return true
+                }
+            }
+        }
 
+        val p = player ?: return super.dispatchKeyEvent(event)
         if (event.action == KeyEvent.ACTION_DOWN) {
             val controlsVisible = playerView.isControllerFullyVisible
             when (event.keyCode) {
@@ -139,22 +267,23 @@ class PlayerActivity : ScraperHostActivity(R.layout.activity_player) {
 
     override fun onStop() {
         super.onStop()
+        saveProgress()
         player?.pause()
     }
 
     override fun onDestroy() {
-        player?.release()
-        player = null
+        saveProgress()
+        releasePlayer()
         super.onDestroy()
     }
 
     companion object {
-        const val EXTRA_URL = "extra_url"
-        const val EXTRA_TITLE = "extra_title"
+        const val EXTRA_INDEX = "extra_index"
+        const val EXTRA_START_MS = "extra_start_ms"
 
-        fun intent(context: Context, pageUrl: String, title: String): Intent =
+        fun intent(context: Context, index: Int, startMs: Long = -1L): Intent =
             Intent(context, PlayerActivity::class.java)
-                .putExtra(EXTRA_URL, pageUrl)
-                .putExtra(EXTRA_TITLE, title)
+                .putExtra(EXTRA_INDEX, index)
+                .putExtra(EXTRA_START_MS, startMs)
     }
 }

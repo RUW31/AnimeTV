@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Oscurece el fondo: más a la izquierda (textos) y abajo (filas). -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="0"
+                android:centerColor="#A60F1115"
+                android:endColor="#4D0F1115"
+                android:startColor="#F20F1115" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="90"
+                android:centerColor="#000F1115"
+                android:endColor="#000F1115"
+                android:startColor="#FF0F1115" />
+        </shape>
+    </item>
+</layer-list>

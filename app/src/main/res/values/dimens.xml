@@ -3,4 +3,16 @@
     <!-- Póster vertical estilo anime -->
     <dimen name="card_width">156dp</dimen>
     <dimen name="card_height">222dp</dimen>
+
+    <!-- Tarjetas de menú (Biblioteca, Buscar, géneros) -->
+    <dimen name="action_card_width">220dp</dimen>
+    <dimen name="action_card_height">120dp</dimen>
+
+    <!-- Tarjetas de episodio -->
+    <dimen name="ep_card_width">200dp</dimen>
+    <dimen name="ep_card_height">112dp</dimen>
+
+    <!-- Póster en la ficha -->
+    <dimen name="poster_width">200dp</dimen>
+    <dimen name="poster_height">290dp</dimen>
 </resources>

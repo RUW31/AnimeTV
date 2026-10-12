@@ -1,11 +1,51 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">AnimeTV</string>
+
+    <!-- Inicio -->
     <string name="loading_catalog">Cargando catálogo…</string>
-    <string name="loading_episodes">Cargando episodios…</string>
-    <string name="searching_video">Buscando el video…</string>
     <string name="no_results">No se encontraron animes.\nRevisa los selectores en SiteConfig.kt.</string>
-    <string name="no_episodes">No se encontraron episodios.\nRevisa EPISODE_PATTERN en SiteConfig.kt.</string>
+    <string name="row_continue">Continuar viendo</string>
+    <string name="row_favorites">Mis favoritos</string>
+    <string name="row_explore">Explorar</string>
+    <string name="row_genres">Géneros</string>
+    <string name="menu_library">Biblioteca</string>
+    <string name="menu_search">Buscar</string>
+
+    <!-- Biblioteca -->
+    <string name="loading_library">Cargando biblioteca…</string>
+    <string name="library_empty">No se encontraron animes en esta página.\nPulsa Atrás para volver.</string>
+    <string name="library_missing">No se encontró la biblioteca del sitio. Pon su URL en LIBRARY_URL (SiteConfig.kt).</string>
+
+    <!-- Búsqueda -->
+    <string name="search_site">Resultados del sitio</string>
+    <string name="search_local">Ya cargados en la app</string>
+    <string name="search_none">Sin resultados para “%1$s”</string>
+    <string name="search_missing">No se encontró el buscador del sitio. Pon la plantilla en SEARCH_URL (SiteConfig.kt).</string>
+    <string name="voice_unavailable">La búsqueda por voz no está disponible en esta TV</string>
+
+    <!-- Ficha -->
+    <string name="loading_details">Cargando ficha…</string>
+    <string name="no_episodes_details">No se encontraron episodios. Revisa EPISODE_PATTERN en SiteConfig.kt.</string>
+    <string name="row_episodes">Episodios %1$d–%2$d</string>
+    <string name="action_play">Ver</string>
+    <string name="action_continue">Continuar</string>
+    <string name="action_next">Siguiente</string>
+    <string name="action_rewatch">Ver de nuevo</string>
+    <string name="action_latest">Último episodio</string>
+    <string name="action_fav_add">♡ Añadir a favoritos</string>
+    <string name="action_fav_remove">♥ En favoritos</string>
+    <string name="fav_added">Añadido a Mis favoritos</string>
+    <string name="fav_removed">Quitado de Mis favoritos</string>
+    <string name="watched_badge">✓ Visto</string>
+
+    <!-- Reproductor -->
+    <string name="searching_video">Buscando el video…</string>
+    <string name="searching_video_ep">Buscando el video…\n%1$s</string>
     <string name="video_not_found">No se encontró un enlace .m3u8 o .mp4 en esta página.\nPulsa Atrás para volver.</string>
+    <string name="video_not_found_next">No se encontró el video de este episodio.\nOK: siguiente episodio · Atrás: volver</string>
     <string name="playback_error">Error de reproducción: %1$s\nPulsa Atrás para volver.</string>
+    <string name="resume_from">Continuando desde %1$s</string>
+    <string name="next_episode_countdown">Siguiente: %1$s\nEmpieza en %2$d s\n\nOK: verlo ya · Atrás: salir</string>
+    <string name="series_finished">Terminaste el último episodio disponible.\nPulsa Atrás para volver.</string>
 </resources>

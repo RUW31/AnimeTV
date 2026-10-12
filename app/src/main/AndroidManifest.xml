@@ -10,8 +10,12 @@
     <uses-feature
         android:name="android.hardware.touchscreen"
         android:required="false" />
+    <uses-feature
+        android:name="android.hardware.microphone"
+        android:required="false" />
 
     <application
+        android:name=".App"
         android:allowBackup="false"
         android:banner="@drawable/banner"
         android:icon="@drawable/ic_launcher"
@@ -31,7 +35,17 @@
         </activity>
 
         <activity
-            android:name=".EpisodesActivity"
+            android:name=".DetailsActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
+
+        <activity
+            android:name=".LibraryActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
+
+        <activity
+            android:name=".SearchActivity"
             android:exported="false"
             android:screenOrientation="landscape" />
 

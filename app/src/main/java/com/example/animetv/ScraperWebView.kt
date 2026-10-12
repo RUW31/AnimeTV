@@ -36,16 +36,13 @@ data class MediaHit(val url: String, val headers: Map<String, String>) {
 }
 
 /**
- * WebView "oculto": se coloca debajo de la UI (tapado y sin foco) para que Chromium
+ * WebView "oculto": va debajo de la UI (tapado y sin foco) para que Chromium
  * lo trate como visible y ejecute el JavaScript del sitio con normalidad.
  *
- * Hace tres cosas:
  *  1. Carga páginas y espera a que terminen.
  *  2. Inyecta JavaScript (ver [SiteConfig]) y devuelve el resultado como JSON.
  *  3. Espía TODAS las peticiones de red (también las de iframes de otros dominios)
  *     para capturar enlaces .m3u8 / .mp4 junto con su Referer.
- *
- * Todos los métodos públicos son `suspend` y se pueden llamar desde lifecycleScope.
  */
 @SuppressLint("SetJavaScriptEnabled")
 class ScraperWebView(context: Context) {
@@ -73,6 +70,7 @@ class ScraperWebView(context: Context) {
         userAgent = view.settings.userAgentString
         view.isFocusable = false
         view.isFocusableInTouchMode = false
+        view.setBackgroundColor(0)
         CookieManager.getInstance().apply {
             setAcceptCookie(true)
             setAcceptThirdPartyCookies(view, true)
@@ -83,41 +81,52 @@ class ScraperWebView(context: Context) {
 
     // ------------------------------------------------------------------ API
 
-    /** Extrae la lista de animes de la portada. */
-    suspend fun scrapeCatalog(url: String = SiteConfig.BASE_URL): List<Anime> {
-        loadPage(url)
-        return pollList(SiteConfig.JS_CATALOG, timeoutMs = 25_000) { arr ->
-            arr.objects().mapNotNull { o ->
-                val title = o.optString("title")
-                val link = o.optString("url")
-                if (title.isBlank() || link.isBlank()) null
-                else Anime(title, link, o.optString("image"), o.optString("section").ifBlank { "Recientes" })
-            }
-        }.also { Log.d(TAG, "Catálogo: ${it.size} elementos") }
+    /** Portada: filas de animes + biblioteca, buscador y géneros detectados en el menú. */
+    suspend fun scrapeHome(): Home {
+        loadPage(SiteConfig.BASE_URL)
+        val catalog = pollList(SiteConfig.JS_CATALOG, timeoutMs = 25_000) { parseAnimeList(it) }
+        val map = parseSiteMap(evalObject(SiteConfig.JS_DISCOVER))
+        Log.d(TAG, "Inicio: ${catalog.size} animes, biblioteca=${map.libraryUrl}, géneros=${map.genres.size}, búsqueda=${map.searchAction}")
+        return Home(catalog, map)
     }
 
-    /** Extrae los episodios de la ficha de un anime, ordenados por número si es posible. */
-    suspend fun scrapeEpisodes(animeUrl: String): List<Episode> {
+    /** Una página de un listado (biblioteca, género o búsqueda) + enlace a la siguiente. */
+    suspend fun scrapeListPage(url: String, timeoutMs: Long = 20_000): ListPage {
+        loadPage(url)
+        val items = pollList(SiteConfig.JS_CATALOG, timeoutMs) { parseAnimeList(it) }
+        return ListPage(items, nextPage(url))
+    }
+
+    /** Para listados sin paginación: pulsa "Cargar más" / hace scroll y vuelve a leer las tarjetas. */
+    suspend fun loadMoreInPlace(): ListPage {
+        val page = currentPage
+        eval(SiteConfig.JS_LOAD_MORE)
+        delay(2_500)
+        val items = evalArray(SiteConfig.JS_CATALOG)?.let { parseAnimeList(it) }.orEmpty()
+        return ListPage(items, nextPage(page))
+    }
+
+    /** Ficha del anime: sinopsis, póster, géneros y episodios ordenados. */
+    suspend fun scrapeDetails(animeUrl: String): AnimeDetails {
         loadPage(animeUrl)
-        val all = pollList(SiteConfig.JS_EPISODES, timeoutMs = 20_000) { arr ->
-            arr.objects().mapNotNull { o ->
-                val link = o.optString("url")
-                if (link.isBlank() || link == animeUrl) return@mapNotNull null
-                val n = episodeNumber(link)
-                Episode(
-                    title = o.optString("title").ifBlank { "Episodio ${n ?: "?"}" },
-                    url = link,
-                    image = o.optString("image"),
-                    number = n
-                )
-            }
+        var obj: JSONObject? = null
+        val deadline = SystemClock.elapsedRealtime() + 20_000
+        while (SystemClock.elapsedRealtime() < deadline) {
+            obj = evalObject(SiteConfig.JS_DETAILS)
+            if ((obj?.optJSONArray("episodes")?.length() ?: 0) > 0) break
+            delay(1_500)
         }
-        // Descarta enlaces a episodios de OTROS animes (sidebar, "recientes"...).
-        val slug = animeUrl.trimEnd('/').substringAfterLast('/')
-        val own = if (slug.length >= 3) all.filter { it.url.contains(slug, ignoreCase = true) } else emptyList()
-        val list = own.ifEmpty { all }
-        Log.d(TAG, "Episodios: ${list.size}")
-        return if (list.all { it.number != null }) list.sortedBy { it.number } else list
+        val o = obj ?: JSONObject()
+        val episodes = cleanEpisodes(animeUrl, o.optJSONArray("episodes")?.let { parseEpisodes(it) }.orEmpty())
+        Log.d(TAG, "Ficha: ${episodes.size} episodios")
+        return AnimeDetails(
+            title = o.str("title"),
+            synopsis = o.str("synopsis"),
+            poster = o.str("poster"),
+            backdrop = o.str("backdrop"),
+            genres = o.optJSONArray("genres")?.strings().orEmpty(),
+            episodes = episodes
+        )
     }
 
     /**
@@ -150,6 +159,54 @@ class ScraperWebView(context: Context) {
         view.destroy()
     }
 
+    // ------------------------------------------------------------ parsing
+
+    private fun parseAnimeList(arr: JSONArray): List<Anime> = arr.objects().mapNotNull { o ->
+        val title = o.str("title")
+        val link = o.str("url")
+        if (title.isBlank() || link.isBlank()) null
+        else Anime(title, link, o.str("image"), o.str("section").ifBlank { "Recientes" })
+    }
+
+    private fun parseEpisodes(arr: JSONArray): List<Episode> = arr.objects().mapNotNull { o ->
+        val link = o.str("url")
+        if (link.isBlank()) return@mapNotNull null
+        val n = episodeNumber(link)
+        Episode(
+            title = o.str("title").ifBlank { "Episodio ${n ?: "?"}" },
+            url = link,
+            image = o.str("image"),
+            number = n
+        )
+    }
+
+    /** Quita enlaces a episodios de OTROS animes (sidebar, "recientes"...) y ordena por número. */
+    private fun cleanEpisodes(animeUrl: String, all: List<Episode>): List<Episode> {
+        val withoutSelf = all.filter { it.url != animeUrl }
+        val slug = animeUrl.trimEnd('/').substringAfterLast('/')
+        val own = if (slug.length >= 3) withoutSelf.filter { it.url.contains(slug, ignoreCase = true) } else emptyList()
+        val list = own.ifEmpty { withoutSelf }
+        return if (list.all { it.number != null }) list.sortedBy { it.number } else list
+    }
+
+    private fun parseSiteMap(o: JSONObject?): SiteMap {
+        val search = o?.optJSONObject("search")
+        return SiteMap(
+            libraryUrl = SiteConfig.LIBRARY_URL.ifBlank { o?.str("library").orEmpty() }.ifBlank { null },
+            searchAction = search?.str("action")?.ifBlank { null },
+            searchParam = search?.str("param")?.ifBlank { null },
+            genres = o?.optJSONArray("genres")?.objects().orEmpty().mapNotNull { g ->
+                val name = g.str("name")
+                val url = g.str("url")
+                if (name.isBlank() || url.isBlank()) null else Genre(name, url)
+            }
+        )
+    }
+
+    private suspend fun nextPage(current: String): String? =
+        evalArray(SiteConfig.JS_NEXT_PAGE)?.strings()
+            ?.firstOrNull { it.startsWith("http") && it.trimEnd('/') != current.trimEnd('/') }
+
     // ------------------------------------------------------------ internos
 
     private suspend fun startLoad(url: String, referer: String?): CompletableDeferred<Unit> =
@@ -179,6 +236,15 @@ class ScraperWebView(context: Context) {
         val raw = eval(script)
         return try {
             JSONArray(raw)
+        } catch (e: JSONException) {
+            null
+        }
+    }
+
+    private suspend fun evalObject(script: String): JSONObject? {
+        val raw = eval(script)
+        return try {
+            JSONObject(raw)
         } catch (e: JSONException) {
             null
         }
@@ -226,7 +292,7 @@ class ScraperWebView(context: Context) {
 
         val hit = withTimeoutOrNull(timeoutMs) {
             var best = channel.receive()
-            // Si lo primero fue un .mp4, espera un poco por si aparece un .m3u8 (mejor calidad / adaptativo).
+            // Si lo primero fue un .mp4, espera un poco por si aparece un .m3u8.
             if (!best.isHls) {
                 withTimeoutOrNull(3_000) { while (!best.isHls) best = channel.receive() }
             }
@@ -300,11 +366,5 @@ class ScraperWebView(context: Context) {
 
         private fun emptyResponse() =
             WebResourceResponse("text/plain", "utf-8", ByteArrayInputStream(ByteArray(0)))
-
-        private fun JSONArray.objects(): List<JSONObject> =
-            (0 until length()).mapNotNull { optJSONObject(it) }
-
-        private fun JSONArray.strings(): List<String> =
-            (0 until length()).map { optString(it) }.filter { it.isNotBlank() }
     }
 }

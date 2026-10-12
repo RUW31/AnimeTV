@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Layout compartido por MainActivity y EpisodesActivity.
+  Layout compartido por Inicio, Ficha, Biblioteca y Búsqueda.
   Orden de dibujo (de abajo hacia arriba):
-    1. scraper_container -> WebView de scraping, tapado por la UI y sin foco
-    2. fragment_container -> BrowseSupportFragment / VerticalGridSupportFragment
-    3. loading_overlay   -> spinner + mensaje de estado
+    1. scraper_container -> WebView de scraping (tapado por el fondo y sin foco)
+    2. backdrop_layer    -> fondo opaco con la imagen difuminada del anime enfocado
+    3. fragment_container-> pantalla de Leanback (transparente)
+    4. loading_overlay   -> spinner + mensaje de estado
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
@@ -20,10 +21,31 @@
         android:importantForAccessibility="noHideDescendants" />
 
     <FrameLayout
-        android:id="@+id/fragment_container"
+        android:id="@+id/backdrop_layer"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="@color/background" />
+        android:background="@color/background"
+        android:focusable="false"
+        android:importantForAccessibility="noHideDescendants">
+
+        <ImageView
+            android:id="@+id/backdrop"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:alpha="0.6"
+            android:importantForAccessibility="no"
+            android:scaleType="centerCrop" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@drawable/scrim_backdrop" />
+    </FrameLayout>
+
+    <FrameLayout
+        android:id="@+id/fragment_container"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
 
     <LinearLayout
         android:id="@+id/loading_overlay"
@@ -48,6 +70,8 @@
             android:layout_marginTop="16dp"
             android:gravity="center"
             android:maxWidth="640dp"
+            android:shadowColor="#CC000000"
+            android:shadowRadius="6"
             android:textColor="@color/text_primary"
             android:textSize="20sp" />
     </LinearLayout>

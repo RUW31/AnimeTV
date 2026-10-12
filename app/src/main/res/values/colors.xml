@@ -1,7 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="brand">#E5484D</color>
+    <color name="brand_dark">#A8323A</color>
     <color name="background">#0F1115</color>
+    <color name="header_bg">#E6121419</color>
     <color name="card_placeholder">#2A2D35</color>
+    <color name="card_info">#1E222B</color>
+    <color name="card_surface">#1C1F27</color>
+    <color name="card_surface_focused">#2B303C</color>
+    <color name="details_panel">#E6161A21</color>
+    <color name="details_actions">#F2101318</color>
     <color name="text_primary">#F2F2F2</color>
+    <color name="text_secondary">#B8BCC6</color>
 </resources>

@@ -1,0 +1,42 @@
+# Compila el APK en la nube en cada push a main y lo publica como Release.
+# Enlace fijo para descargarlo desde la TV:
+#   https://github.com/<usuario>/<repo>/releases/latest/download/app-debug.apk
+name: Build APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar código
+        uses: actions/checkout@v4
+
+      - name: Instalar JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Configurar Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Compilar APK (debug)
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Publicar Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: AnimeTV build ${{ github.run_number }}
+          body: APK compilado automáticamente desde ${{ github.sha }}
+          files: app/build/outputs/apk/debug/app-debug.apk
+          make_latest: true

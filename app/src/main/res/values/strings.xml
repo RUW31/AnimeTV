@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AnimeTV</string>
+    <string name="loading_catalog">Cargando catálogo…</string>
+    <string name="loading_episodes">Cargando episodios…</string>
+    <string name="searching_video">Buscando el video…</string>
+    <string name="no_results">No se encontraron animes.\nRevisa los selectores en SiteConfig.kt.</string>
+    <string name="no_episodes">No se encontraron episodios.\nRevisa EPISODE_PATTERN en SiteConfig.kt.</string>
+    <string name="video_not_found">No se encontró un enlace .m3u8 o .mp4 en esta página.\nPulsa Atrás para volver.</string>
+    <string name="playback_error">Error de reproducción: %1$s\nPulsa Atrás para volver.</string>
+</resources>

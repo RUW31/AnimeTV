@@ -217,42 +217,46 @@ object SiteConfig {
         })();
     """.trimIndent()
 
-    /** Busca enlaces de video en el DOM y en el HTML (incluye URLs escapadas dentro de JSON). */
-    val JS_FIND_MEDIA: String = """
+    /**
+     * Modo cine: hace que el reproductor (el iframe o <video> más grande de la página)
+     * ocupe toda la pantalla. Solo cambia estilos de la página; no toca el video.
+     */
+    val JS_THEATER_ON: String = """
         (function () {
-          var urls = [];
-          document.querySelectorAll('video, video source').forEach(function (v) {
-            var s = v.currentSrc || v.src || v.getAttribute('src');
-            if (s && s.indexOf('blob:') !== 0) urls.push(s);
+          var best = null, area = 0;
+          document.querySelectorAll('iframe, video').forEach(function (e) {
+            var r = e.getBoundingClientRect();
+            var a = r.width * r.height;
+            if (a > area && r.width > 200 && r.height > 120) { area = a; best = e; }
           });
-          var html = document.documentElement ? document.documentElement.innerHTML : '';
-          var re = /https?:[^"'\s<>]+?\.(?:m3u8|mp4)[^"'\s<>]*/gi, m;
-          while ((m = re.exec(html)) !== null) {
-            urls.push(m[0].replace(/\\\//g, '/').replace(/\\u0026/g, '&').replace(/&amp;/g, '&'));
+          if (!best) return 'none';
+          document.querySelectorAll('[data-animetv-theater]').forEach(function (e) {
+            e.removeAttribute('data-animetv-theater');
+          });
+          best.setAttribute('data-animetv-theater', '1');
+          var st = document.getElementById('animetv-theater');
+          if (!st) {
+            st = document.createElement('style');
+            st.id = 'animetv-theater';
+            (document.head || document.documentElement).appendChild(st);
           }
-          document.querySelectorAll('video').forEach(function (v) {
-            try { v.muted = true; v.play(); } catch (e) {}
-          });
-          return urls;
+          st.textContent =
+            '[data-animetv-theater]{position:fixed!important;top:0!important;left:0!important;' +
+            'width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;' +
+            'margin:0!important;border:0!important;transform:none!important;z-index:2147483647!important;' +
+            'background:#000!important}html,body{overflow:hidden!important}';
+          return 'on';
         })();
     """.trimIndent()
 
-    /** Reproductores embebidos (iframes y botones de servidor con data-*). */
-    val JS_EMBEDS: String = """
+    val JS_THEATER_OFF: String = """
         (function () {
-          var out = [];
-          function add(u) {
-            if (!u) return;
-            try { u = new URL(u, location.href).href; } catch (e) { return; }
-            if (u.indexOf('http') === 0 && out.indexOf(u) < 0) out.push(u);
-          }
-          document.querySelectorAll('iframe').forEach(function (f) {
-            add(f.getAttribute('src') || f.getAttribute('data-src'));
+          var st = document.getElementById('animetv-theater');
+          if (st) st.remove();
+          document.querySelectorAll('[data-animetv-theater]').forEach(function (e) {
+            e.removeAttribute('data-animetv-theater');
           });
-          document.querySelectorAll('[data-video], [data-player], [data-embed]').forEach(function (e) {
-            add(e.getAttribute('data-video') || e.getAttribute('data-player') || e.getAttribute('data-embed'));
-          });
-          return out;
+          return 'off';
         })();
     """.trimIndent()
 }

@@ -195,7 +195,8 @@ class AnimeDetailsFragment : DetailsSupportFragment() {
         val ep = episodes[i]
         return when {
             last == null || episodes.none { it.url == last.episodeUrl } -> getString(R.string.action_play) to ep.label
-            ep.url == last.episodeUrl && start > 0 -> getString(R.string.action_continue) to "${ep.label} · ${formatTime(start)}"
+            ep.url == last.episodeUrl && !last.finished ->
+                getString(R.string.action_continue) to (if (start > 0) "${ep.label} · ${formatTime(start)}" else ep.label)
             ep.url == last.episodeUrl -> getString(R.string.action_rewatch) to ep.label
             else -> getString(R.string.action_next) to ep.label
         }
@@ -225,7 +226,7 @@ class AnimeDetailsFragment : DetailsSupportFragment() {
         // Sin lista de episodios (películas, etc.): se intenta reproducir la propia página.
         val list = episodes.ifEmpty { listOf(Episode(anime.title, anime.url, anime.image, null)) }
         PlaybackQueue.set(anime, list)
-        startActivity(PlayerActivity.intent(requireContext(), index.coerceIn(0, list.lastIndex), startMs))
+        startActivity(Playback.intent(requireContext(), index.coerceIn(0, list.lastIndex), startMs))
     }
 
     companion object {

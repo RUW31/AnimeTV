@@ -48,4 +48,10 @@
     <string name="resume_from">Continuando desde %1$s</string>
     <string name="next_episode_countdown">Siguiente: %1$s\nEmpieza en %2$d s\n\nOK: verlo ya · Atrás: salir</string>
     <string name="series_finished">Terminaste el último episodio disponible.\nPulsa Atrás para volver.</string>
+
+    <!-- Reproductor web -->
+    <string name="web_hint">Flechas: mover cursor · OK: clic · CH+ / CH−: episodio · Menú: modo cine · Atrás: salir</string>
+    <string name="theater_on">Modo cine activado</string>
+    <string name="theater_off">Modo cine desactivado</string>
+    <string name="no_next_episode">No hay más episodios en la lista</string>
 </resources>

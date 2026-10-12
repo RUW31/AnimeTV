@@ -61,8 +61,17 @@ data class ContinueItem(val progress: WatchProgress) : CardItem {
     override val subtitle: String
         get() {
             val ep = progress.episodeNumber?.let { "Ep $it" } ?: progress.episodeTitle
-            return if (progress.finished) "$ep · Visto" else "$ep · ${formatTime(progress.positionMs)}"
+            return when {
+                progress.finished -> "$ep · Visto"
+                progress.positionMs > 0 -> "$ep · ${formatTime(progress.positionMs)}"
+                else -> ep
+            }
         }
+}
+
+/** Enlace directo a un video (.m3u8 / .mp4) + cabeceras para pedirlo. */
+data class MediaHit(val url: String, val headers: Map<String, String>) {
+    val isHls: Boolean get() = url.contains(".m3u8", ignoreCase = true)
 }
 
 data class WatchProgress(

@@ -26,10 +26,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * Reproduce la cola de [PlaybackQueue]:
- *  1. Busca el .m3u8/.mp4 del episodio con el WebView oculto.
- *  2. Lo reproduce con ExoPlayer reenviando Referer, User-Agent y cookies.
- *  3. Guarda el progreso cada 5 s y al final pasa solo al siguiente episodio.
+ * Reproductor nativo para enlaces DIRECTOS de video (.m3u8 / .mp4), por ejemplo de
+ * tu propio servidor. Reproduce la cola de [PlaybackQueue]:
+ *  1. Reproduce el enlace con ExoPlayer.
+ *  2. Guarda el progreso cada 5 s y al final pasa solo al siguiente episodio.
  *
  * Control remoto:
  *  - OK: pausa / reanuda                - ◀ / ▶: -10 s / +10 s
@@ -87,9 +87,9 @@ class PlayerActivity : ScraperHostActivity(R.layout.activity_player) {
         showStatus(getString(R.string.searching_video_ep, ep.label))
 
         loadJob = lifecycleScope.launch {
-            val hit = scraper.sniffMedia(ep.url)
-            scraper.stop() // corta el reproductor web (y su audio)
-            if (hit == null) {
+            // Este reproductor es solo para enlaces directos (.m3u8 / .mp4), p. ej. de tu propio servidor.
+            // Las páginas web se abren en WebPlayerActivity con su propio reproductor.
+            if (!Playback.isDirectMedia(ep.url)) {
                 showStatus(
                     getString(if (hasNext) R.string.video_not_found_next else R.string.video_not_found),
                     spinner = false
@@ -98,7 +98,7 @@ class PlayerActivity : ScraperHostActivity(R.layout.activity_player) {
             }
             val resume = if (startMs >= 0) startMs
             else Store.progress(ep.url)?.takeIf { !it.finished }?.positionMs ?: 0L
-            startPlayback(hit, resume)
+            startPlayback(MediaHit(ep.url, emptyMap()), resume)
         }
     }
 

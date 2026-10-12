@@ -2,6 +2,7 @@ package com.example.animetv
 
 import android.app.Activity
 import android.app.Application
+import android.content.Context
 import android.content.Intent
 import android.widget.Toast
 
@@ -79,6 +80,19 @@ object Nav {
 
     private fun playSingle(activity: Activity, episode: Episode, anime: Anime, startMs: Long) {
         PlaybackQueue.set(anime, listOf(episode))
-        activity.startActivity(PlayerActivity.intent(activity, 0, startMs))
+        activity.startActivity(Playback.intent(activity, 0, startMs))
+    }
+}
+
+/** Elige el reproductor: nativo para enlaces directos de video, web para páginas. */
+object Playback {
+    private val DIRECT_MEDIA = Regex("""\.(m3u8|mp4|mkv|webm)(\?|#|$)""", RegexOption.IGNORE_CASE)
+
+    fun isDirectMedia(url: String): Boolean = DIRECT_MEDIA.containsMatchIn(url)
+
+    fun intent(context: Context, index: Int, startMs: Long = -1L): Intent {
+        val url = PlaybackQueue.episodes.getOrNull(index)?.url.orEmpty()
+        return if (isDirectMedia(url)) PlayerActivity.intent(context, index, startMs)
+        else WebPlayerActivity.intent(context, index)
     }
 }

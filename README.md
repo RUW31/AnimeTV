@@ -1,53 +1,58 @@
 # AnimeTV — Android TV (Kotlin + Leanback + Media3)
 
-App para Android TV que usa un WebView oculto para extraer el catálogo, los
-episodios y el enlace de video (.m3u8 / .mp4) de un sitio web, y lo reproduce con
-ExoPlayer (Media3). Toda la navegación funciona con el D-pad del control remoto.
+App para Android TV que muestra el catálogo de un sitio web con una interfaz de TV
+(filas, biblioteca, búsqueda, fichas) y abre cada episodio en la propia página del
+sitio, con su reproductor, manejable con el D-pad del control remoto.
 
 ## Estructura
 
 ```
 AnimeTV/
-├── settings.gradle.kts
-├── build.gradle.kts                 ← versiones de AGP y Kotlin
-├── gradle.properties
-├── gradle/wrapper/gradle-wrapper.properties
-└── app/
-    ├── build.gradle.kts             ← dependencias (Leanback, Media3, Glide…)
-    └── src/main/
-        ├── AndroidManifest.xml
-        ├── java/com/example/animetv/
-        │   ├── SiteConfig.kt          ← URL, selectores y JavaScript inyectado (lo único que ajustas)
-        │   ├── ScraperWebView.kt      ← WebView oculto: carga, inyecta JS, captura .m3u8/.mp4
-        │   ├── ScraperHostActivity.kt ← base: monta el WebView y el overlay de carga
-        │   ├── MainActivity.kt        ← BrowseSupportFragment con filas por sección
-        │   ├── EpisodesActivity.kt    ← cuadrícula de episodios
-        │   ├── PlayerActivity.kt      ← busca el stream y lo reproduce con ExoPlayer
-        │   ├── CardPresenter.kt       ← tarjetas de póster (ImageCardView + Glide)
-        │   └── Models.kt
-        └── res/  (layouts, strings, colores, tema, banner de TV)
+├── settings.gradle.kts / build.gradle.kts / gradle.properties
+├── .github/workflows/build-apk.yml   ← compila el APK en GitHub y lo publica en Releases
+└── app/src/main/
+    ├── AndroidManifest.xml
+    ├── java/com/example/animetv/
+    │   ├── SiteConfig.kt          ← URL, selectores y JavaScript inyectado (lo único que ajustas)
+    │   ├── ScraperWebView.kt      ← WebView oculto que lee catálogo, biblioteca, búsqueda y fichas
+    │   ├── ScraperHostActivity.kt ← base: WebView oculto, fondo difuminado y overlay de carga
+    │   ├── MainActivity.kt        ← Inicio: Continuar viendo, Favoritos, Explorar, secciones, Géneros
+    │   ├── LibraryActivity.kt     ← Biblioteca / géneros en cuadrícula con carga infinita
+    │   ├── SearchActivity.kt      ← Búsqueda con teclado o voz
+    │   ├── DetailsActivity.kt     ← Ficha: sinopsis, géneros, botones y episodios
+    │   ├── WebPlayerActivity.kt   ← Abre el episodio con el reproductor de la página (cursor + modo cine)
+    │   ├── CursorView.kt          ← Puntero que se mueve con el D-pad
+    │   ├── PlayerActivity.kt      ← Reproductor nativo (ExoPlayer) solo para enlaces directos .m3u8/.mp4
+    │   ├── CardPresenter.kt       ← Tarjetas de póster, menú y episodio
+    │   ├── Store.kt               ← Favoritos y progreso guardados en la TV
+    │   └── Nav.kt / Models.kt / Util.kt
+    └── res/  (layouts, strings, colores, tema, íconos, banner de TV)
 ```
 
 ## Cómo funciona
 
-1. **Catálogo** – `MainActivity` carga `SiteConfig.BASE_URL` en el WebView, inyecta
-   `JS_CATALOG` y agrupa los resultados por el título (`h1/h2/h3`) de la sección
-   donde aparece cada tarjeta. Cada grupo es una fila de `BrowseSupportFragment`.
-2. **Episodios** – `EpisodesActivity` abre la ficha del anime e inyecta `JS_EPISODES`,
-   que toma los enlaces cuya ruta cumple `EPISODE_PATTERN`. Se ordenan por número.
-3. **Video** – `PlayerActivity` abre la página del episodio y combina tres técnicas:
-   - `shouldInterceptRequest` vigila **todas** las peticiones (también las de iframes
-     de otros dominios) y captura cualquier URL `.m3u8` / `.mp4`.
-   - `JS_FIND_MEDIA` revisa `<video>`, `<source>` y el HTML (incluye URLs escapadas en JSON).
-   - Toques sintéticos en el centro para que el reproductor web pida el stream.
-   Si no aparece nada, abre cada iframe/servidor embebido (`JS_EMBEDS`) con el Referer correcto.
-4. **Reproducción** – ExoPlayer recibe el Referer, el User-Agent y las cookies del
-   WebView; sin eso, muchos CDN responden 403.
+1. **Inicio** – Carga `SiteConfig.BASE_URL` en el WebView oculto e inyecta `JS_CATALOG`
+   (tarjetas agrupadas por sección) y `JS_DISCOVER` (detecta biblioteca, buscador y
+   géneros en el menú del sitio).
+2. **Biblioteca / Géneros** – Cuadrícula que va pidiendo la página siguiente
+   (`JS_NEXT_PAGE`) o pulsa "Cargar más" (`JS_LOAD_MORE`) al llegar al final.
+3. **Búsqueda** – Usa el formulario de búsqueda detectado (o `SEARCH_URL`) y también
+   busca entre los animes que la app ya cargó.
+4. **Ficha** – `JS_DETAILS` lee sinopsis, póster, géneros y episodios (`EPISODE_PATTERN`).
+5. **Ver un episodio** – `WebPlayerActivity` abre la página del episodio tal cual, como un
+   navegador, y su propio reproductor hace el trabajo:
+   - Flechas mueven un cursor; **OK** hace clic donde está.
+   - **Modo cine** (`JS_THEATER_ON`): el iframe/video más grande ocupa toda la pantalla.
+     Se alterna con **Menú** o **Info**.
+   - El botón de pantalla completa del reproductor funciona (`onShowCustomView`).
+   - **CH+ / CH−** cambian de episodio; al avanzar, el anterior queda marcado como visto.
+   - Se bloquean dominios de anuncios conocidos y las redirecciones a otros sitios.
 
-> El WebView está **debajo** de la UI (tapado y sin foco). Se hace así en vez de
+> El WebView de lectura está **debajo** de la UI (tapado y sin foco). Se hace así en vez de
 > `visibility="gone"` porque Chromium pausa o limita las páginas que no considera visibles.
 
-`BrowseFragment` está obsoleto; el proyecto usa su reemplazo `BrowseSupportFragment`.
+`PlayerActivity` (ExoPlayer) solo se usa cuando la URL del episodio ya es un video directo
+(`.m3u8`, `.mp4`, `.mkv`, `.webm`), por ejemplo desde tu propio servidor.
 
 ## Compilar en Android Studio
 
@@ -98,25 +103,25 @@ Si el catálogo o los episodios salen vacíos:
 ### Depurar el WebView oculto
 
 - En builds *debug*, abre `chrome://inspect` en Chrome de la PC con la TV/emulador
-  conectado por ADB: verás el WebView oculto, su consola y su pestaña *Network*.
+  conectado por ADB: verás los WebView de la app, su consola y su pestaña *Network*.
 - En **Logcat** filtra por la etiqueta `Scraper`: muestra cuántos animes/episodios
-  se extrajeron, cada `.m3u8/.mp4` detectado y las navegaciones bloqueadas.
+  se leyeron, la biblioteca/buscador detectados y las navegaciones bloqueadas.
 
 ## Limitaciones
 
 - Si el sitio cambia su HTML, hay que ajustar `SiteConfig.kt`.
-- No funciona con streams protegidos con DRM (Widevine) ni con reproductores que
-  solo exponen `blob:` sin pedir un `.m3u8` por red.
-- Si un servidor devuelve **403**, casi siempre falta Referer/cookie: revisa en
-  `chrome://inspect › Network` qué cabeceras envía el navegador y añádelas en
-  `PlayerActivity.startPlayback()`.
+- En el reproductor web la app no sabe el minuto exacto del video: guarda qué episodio
+  abriste y lo marca como visto al pasar al siguiente o tras ~18 minutos.
+- El modo cine elige el iframe/video más grande; si tapa un botón que necesitas
+  (p. ej. elegir servidor), desactívalo con **Menú** o **Info**.
 
-## Controles en el reproductor
+## Controles en el reproductor web
 
-| Tecla            | Acción                                  |
-|------------------|-----------------------------------------|
-| OK / Centro      | Pausa / reanuda                         |
-| ◀ / ▶            | −10 s / +10 s                           |
-| ▲ / ▼            | Muestra los controles y navega por ellos |
-| Atrás            | Oculta los controles; otra vez, sale    |
-| Teclas multimedia| Play/Pausa, adelantar, retroceder       |
+| Tecla                       | Acción                                              |
+|-----------------------------|-----------------------------------------------------|
+| ◀ ▲ ▼ ▶                     | Mueven el cursor (en el borde, desplazan la página) |
+| OK / Centro                 | Clic donde está el cursor                           |
+| Play/Pausa del control      | Clic en el centro de la pantalla                    |
+| CH+ / CH− (Siguiente/Anterior) | Episodio siguiente / anterior                    |
+| Menú / Info                 | Activa o desactiva el modo cine                     |
+| Atrás                       | Sale de pantalla completa; si no, vuelve o cierra   |

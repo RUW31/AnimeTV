@@ -16,10 +16,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Descargar código
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Instalar JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -30,7 +30,20 @@ jobs:
       - name: Compilar APK (debug)
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace
+          set -o pipefail
+          ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tee build.log
+
+      # Si falla, muestra los errores como anotaciones visibles en la página del build.
+      - name: Reportar errores
+        if: failure()
+        run: |
+          grep -E "^e: |error:|What went wrong|Could not|Unresolved|> " build.log | grep -v "^> Task" | head -80 > errs.txt || true
+          [ -s errs.txt ] || tail -80 build.log > errs.txt
+          split -l 15 errs.txt part_
+          for f in part_*; do
+            msg=$(sed -e 's/%/%25/g' -e 's/\r/%0D/g' "$f" | sed ':a;N;$!ba;s/\n/%0A/g')
+            echo "::error title=Gradle::$msg"
+          done
 
       - name: Publicar Release
         uses: softprops/action-gh-release@v2

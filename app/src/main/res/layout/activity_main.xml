@@ -15,7 +15,7 @@
         android:id="@+id/scraper_container"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:descendantFocusability="blockDescendants"
+        android:descendantFocusability="blocksDescendants"
         android:focusable="false"
         android:importantForAccessibility="noHideDescendants" />
 
